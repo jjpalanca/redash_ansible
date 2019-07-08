@@ -1,0 +1,6 @@
+- hosts: vm142-xx
+  roles: 
+     - redash
+  vars: 
+     - repo_err: "Repository was not fetched: "
+     - setup_err: "Setup not ready: "

@@ -1,0 +1,82 @@
+---
+
+- name: Fetching the redash repo
+  git:
+     repo: https://github.com/getredash/redash.git
+     dest: "/home/redash_setup"
+  register: repo
+  
+- name: Fetching message
+  debug: msg={{ repo_err }}{{ repo.failed }}
+
+- name: Preparing for setup
+  file: 
+     path: /home/redash_setup/setup/./setup.sh
+     owner: root
+     group: root
+     mode: 0700
+  register: setup
+
+- name: Setup message
+  debug: msg={{ setup_err }}{{ setup.failed }}
+ 
+- name: Executing redash setup script
+  command: /home/redash_setup/setup/./setup.sh
+  register: results
+
+- name: Setup logs
+  debug: msg={{ results.stdout_lines }}
+
+- name: Setting up nginx directory
+  command: "{{ item }}"
+  with_items: 
+  - mkdir /opt/redash/nginx
+  - mkdir /opt/redash/nginx/certs
+  - mkdir /opt/redash/nginx/certs-data
+
+- name: Setting up nginx configuration
+  template:
+     src: nginx1.conf.j2
+     dest: /opt/redash/nginx/nginx.conf
+
+- name: Updating docker-compose.yml config file
+  template:
+     src: docker-compose.yml.j2
+     dest: /opt/redash/docker-compose.yml
+     force: yes
+
+- name: Updating Docker-Compose 
+  command: chdir=/opt/redash/ docker-compose up -d
+
+- name: Installing pip
+  apt:
+     name: python-pip
+
+- name: Installing pexpect
+  pip:
+     name: pexpect
+  become: yes
+ 
+- name: Generating certificate
+  expect:
+     echo:  yes
+     chdir: /opt/redash/
+     command: docker run -it --rm -v  /opt/redash/nginx/certs:/etc/letsencrypt -v /opt/redash/nginx/certs-data:/data/letsencrypt deliverous/certbot certonly --webroot --webroot-path=/data/letsencrypt -d {{ SERVER_NAME }}
+     responses:
+       'Enter email address': '{{ EMAIL_ADDRESS }}'
+       'Terms of Service': 'A'
+       'send you email': 'Y'
+     timeout: null
+
+- name: Updating nginx configuration
+  template:
+     src: nginx2.conf.j2
+     dest: /opt/redash/nginx/nginx.conf
+     force: yes
+ 
+- name: Stopping Docker-Compose services
+  command: chdir=/opt/redash/ docker-compose down
+
+- name: Updating and Starting Docker-Compose services
+  command: chdir=/opt/redash/ docker-compose up -d
+
